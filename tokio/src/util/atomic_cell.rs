@@ -29,6 +29,18 @@ impl<T> AtomicCell<T> {
     pub(crate) fn take(&self) -> Option<Box<T>> {
         self.swap(None)
     }
+
+    // Modified version of https://doc.rust-lang.org/std/cell/struct.Cell.html#method.update
+    pub(crate) fn update<F, V>(&self, f: F) -> Option<V>
+    where
+        F: FnOnce(&mut T) -> V,
+    {
+        self.take().map(|mut inner| {
+            let value = f(&mut inner);
+            self.set(inner);
+            value
+        })
+    }
 }
 
 fn to_raw<T>(data: Option<Box<T>>) -> *mut T {
