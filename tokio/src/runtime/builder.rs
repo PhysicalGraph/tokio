@@ -1,5 +1,5 @@
 use crate::runtime::handle::Handle;
-use crate::runtime::{blocking, driver, Callback, Runtime, Spawner};
+use crate::runtime::{blocking, driver, Callback, ParkShim, Runtime, Spawner};
 
 use std::fmt;
 use std::io;
@@ -78,6 +78,9 @@ pub struct Builder {
 
     /// Customizable keep alive timeout for BlockingPool
     pub(super) keep_alive: Option<Duration>,
+
+    /// Customizable park shim
+    pub(super) park_shim: Option<ParkShim>,
 }
 
 pub(crate) type ThreadNameFn = std::sync::Arc<dyn Fn() -> String + Send + Sync + 'static>;
@@ -145,6 +148,8 @@ impl Builder {
             after_unpark: None,
 
             keep_alive: None,
+
+            park_shim: None,
         }
     }
 
@@ -496,6 +501,20 @@ impl Builder {
         self
     }
 
+    /// Adds a park shim that dictates what the underlying `Park` duration will use.
+    ///
+    /// Very shady stuff.
+    pub fn with_park<F>(&mut self, f: F) -> &mut Self
+    where
+        F: FnMut(Option<std::time::Duration>) -> Option<std::time::Duration>
+            + Sync
+            + Send
+            + 'static,
+    {
+        self.park_shim = Some(std::sync::Arc::new(std::sync::Mutex::new(Box::new(f))));
+        self
+    }
+
     /// Creates the configured `Runtime`.
     ///
     /// The returned `Runtime` instance is ready to spawn tasks.
@@ -529,6 +548,7 @@ impl Builder {
             enable_io: self.enable_io,
             enable_time: self.enable_time,
             start_paused: self.start_paused,
+            park_shim: self.park_shim.clone(),
         }
     }
 

@@ -259,6 +259,18 @@ impl fmt::Debug for BasicScheduler {
     }
 }
 
+#[cfg(unix)]
+impl std::os::unix::io::AsRawFd for BasicScheduler {
+    fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
+        self.core.update(|inner| {
+            match &inner.driver {
+                Some(driver) => driver.as_raw_fd(),
+                None => -1,
+            }
+        }).unwrap_or(-1)
+    }
+}
+
 // ===== impl Core =====
 
 impl Core {
