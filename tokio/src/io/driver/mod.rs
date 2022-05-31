@@ -17,6 +17,7 @@ use scheduled_io::ScheduledIo;
 mod metrics;
 
 use crate::park::{Park, Unpark};
+use crate::runtime::ParkShim;
 use crate::util::slab::{self, Slab};
 use crate::{loom::sync::Mutex, util::bit};
 
@@ -47,6 +48,9 @@ pub(crate) struct Driver {
 
     /// State shared between the reactor and the handles.
     inner: Arc<Inner>,
+
+    /// Mechanism for injecting an alternate event loop into the runtime.
+    park_shim: Option<ParkShim>,
 }
 
 /// A reference to an I/O driver.
@@ -118,7 +122,7 @@ fn _assert_kinds() {
 impl Driver {
     /// Creates a new event loop, returning any error that happened during the
     /// creation.
-    pub(crate) fn new() -> io::Result<Driver> {
+    pub(crate) fn new(park_shim: Option<ParkShim>) -> io::Result<Driver> {
         let poll = mio::Poll::new()?;
         let waker = mio::Waker::new(poll.registry(), TOKEN_WAKEUP)?;
         let registry = poll.registry().try_clone()?;
@@ -138,6 +142,7 @@ impl Driver {
                 waker,
                 metrics: IoDriverMetrics::default(),
             }),
+            park_shim,
         })
     }
 
@@ -154,6 +159,14 @@ impl Driver {
     }
 
     fn turn(&mut self, max_wait: Option<Duration>) -> io::Result<()> {
+        // Run custom event loop if park shim is enabled
+        let max_wait = if let Some(ref mut shim) = self.park_shim {
+            let f = &mut *shim.lock().unwrap();
+            f(max_wait)
+        } else {
+            max_wait
+        };
+
         // How often to call `compact()` on the resource slab
         const COMPACT_INTERVAL: u8 = 255;
 
@@ -252,6 +265,13 @@ impl Park for Driver {
     }
 
     fn shutdown(&mut self) {}
+
+    #[cfg(unix)]
+    fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
+        use std::os::unix::io::AsRawFd;
+
+        self.poll.as_raw_fd()
+    }
 }
 
 impl fmt::Debug for Driver {
