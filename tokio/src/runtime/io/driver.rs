@@ -6,7 +6,7 @@ cfg_signal_internal_and_unix! {
 use crate::io::interest::Interest;
 use crate::io::ready::Ready;
 use crate::loom::sync::Mutex;
-use crate::runtime::driver;
+use crate::runtime::{driver, ParkShim};
 use crate::runtime::io::registration_set;
 use crate::runtime::io::{IoDriverMetrics, RegistrationSet, ScheduledIo};
 
@@ -26,6 +26,9 @@ pub(crate) struct Driver {
 
     /// The system event queue.
     poll: mio::Poll,
+
+    /// Mechanism for injecting an alternate event loop into the runtime.
+    park_shim: Option<ParkShim>,
 }
 
 /// A reference to an I/O driver.
@@ -91,7 +94,7 @@ fn _assert_kinds() {
 impl Driver {
     /// Creates a new event loop, returning any error that happened during the
     /// creation.
-    pub(crate) fn new(nevents: usize) -> io::Result<(Driver, Handle)> {
+    pub(crate) fn new(nevents: usize, park_shim: Option<ParkShim>) -> io::Result<(Driver, Handle)> {
         let poll = mio::Poll::new()?;
         #[cfg(not(target_os = "wasi"))]
         let waker = mio::Waker::new(poll.registry(), TOKEN_WAKEUP)?;
@@ -101,6 +104,7 @@ impl Driver {
             signal_ready: false,
             events: mio::Events::with_capacity(nevents),
             poll,
+            park_shim,
         };
 
         let (registrations, synced) = RegistrationSet::new();
@@ -139,6 +143,13 @@ impl Driver {
 
     fn turn(&mut self, handle: &Handle, max_wait: Option<Duration>) {
         debug_assert!(!handle.registrations.is_shutdown(&handle.synced.lock()));
+
+        // Run custom event loop if park shim is enabled
+        let max_wait = if let Some(ref mut park_shim) = self.park_shim {
+            park_shim(max_wait)
+        } else {
+            max_wait
+        };
 
         handle.release_pending_registrations();
 

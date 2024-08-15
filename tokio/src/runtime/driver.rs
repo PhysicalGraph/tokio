@@ -147,7 +147,7 @@ cfg_io_driver! {
         assert!(!enabled);
 
         let ret = if enabled {
-            let (io_driver, io_handle) = crate::runtime::io::Driver::new(nevents)?;
+            let (io_driver, io_handle) = crate::runtime::io::Driver::new(nevents, None)?;
 
             let (signal_driver, signal_handle) = create_signal_driver(io_driver, &io_handle)?;
             let process_driver = create_process_driver(signal_driver);
