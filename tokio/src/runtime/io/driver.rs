@@ -271,7 +271,7 @@ impl Handle {
     }
 
     /// Acquire a reference to the `mio::Registry` associated with this `Handle`.
-    pub fn registry(&self) -> &mio::Registry {
+    pub(crate) fn registry(&self) -> &mio::Registry {
         &self.registry
     }
 
