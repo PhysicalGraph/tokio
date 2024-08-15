@@ -270,6 +270,11 @@ impl Handle {
         Ok(())
     }
 
+    /// Acquire a reference to the `mio::Registry` associated with this `Handle`.
+    pub(super) fn registry(&self) -> &mio::Registry {
+        &self.registry
+    }
+
     fn release_pending_registrations(&self) {
         if self.registrations.needs_release() {
             self.registrations.release(&mut self.synced.lock());
