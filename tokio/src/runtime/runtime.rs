@@ -470,11 +470,6 @@ impl Runtime {
         self.shutdown_timeout(Duration::from_nanos(0));
     }
 
-    /// Get a reference to the `mio::Registry` associated with the tokio driver.
-    pub fn driver_registry(&self) -> Option<&mio::Registry> {
-        self.handle.inner.driver().io.as_ref().map(|driver| driver.registry())
-    }
-
     /// Returns a view that lets you get information about how the runtime
     /// is performing.
     pub fn metrics(&self) -> crate::runtime::RuntimeMetrics {
